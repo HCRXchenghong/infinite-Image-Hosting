@@ -1,0 +1,562 @@
+openapi: 3.1.0
+info:
+  title: Yuexiang Image API
+  version: 2026.05.08
+  description: 悦享图床用户端与管理端 API。
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      security: []
+      responses:
+        "200":
+          description: 服务健康状态。
+  /readyz:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Redis、数据库与对象存储依赖检查通过，可接收流量。
+        "503":
+          description: 关键依赖不可用，暂不应接收流量。
+  /api/v1/plans:
+    get:
+      security: []
+      responses:
+        "200":
+          description: 公开套餐列表，不包含 hidden/invite-only 套餐。
+  /api/v1/auth/register:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                nickname: { type: string }
+      responses:
+        "200":
+          description: 注册成功，返回用户和会话 token。
+  /api/v1/auth/login:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: 登录成功。
+  /api/v1/auth/forgot-password:
+    post:
+      security: []
+      responses:
+        "200":
+          description: 如果邮箱存在，发送密码重置验证码。
+  /api/v1/auth/reset-password:
+    post:
+      security: []
+      responses:
+        "200":
+          description: 使用验证码重置密码。
+  /api/v1/auth/verify-email:
+    post:
+      security: []
+      responses:
+        "200":
+          description: 邮箱验证成功。
+  /api/v1/auth/resend-verification:
+    post:
+      security: []
+      responses:
+        "200":
+          description: 邮箱验证码已重新发送，开发模式返回 dev_email_verification_code。
+  /api/v1/auth/me:
+    get:
+      responses:
+        "200":
+          description: 当前用户、订阅、用量和鉴权来源。
+  /api/v1/images:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: 当前账号图片列表。
+    post:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                private:
+                  type: boolean
+      responses:
+        "200":
+          description: 上传成功，返回图片元数据和访问链接。
+  /api/v1/images/{public_id}/sign:
+    get:
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PublicID"
+      responses:
+        "200":
+          description: 15 分钟短期签名 URL。
+  /i/{public_id}:
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/PublicID"
+      responses:
+        "200":
+          description: 图片原图或保护图。
+  /i/{public_id}/{variant}:
+    get:
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/PublicID"
+        - name: variant
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 图片派生图或保护图。
+  /metrics:
+    get:
+      security: []
+      responses:
+        "200":
+          description: Prometheus 文本指标。
+  /api/v1/checkout/ifpay:
+    post:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_slug]
+              properties:
+                plan_slug: { type: string }
+                billing_cycle: { type: string, enum: [monthly, yearly] }
+                sub_method: { type: string }
+                access_token: { type: string }
+      responses:
+        "200":
+          description: IF-Pay 支付单创建成功。
+        "400":
+          description: 计费周期无效、套餐不可购买，或生产环境缺少 IF-Pay access token。
+        "403":
+          description: 用户邮箱未验证。
+  /api/v1/orders:
+    get:
+      responses:
+        "200":
+          description: 当前用户的订单列表，按创建时间倒序返回。
+  /api/v1/settings/profile:
+    patch:
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nickname]
+              properties:
+                nickname: { type: string, maxLength: 40 }
+      responses:
+        "200":
+          description: 用户资料已更新。
+  /api/v1/settings/account-destroy-request:
+    post:
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: 账号销毁工单已提交并写入审计日志。
+  /api/v1/ifpay/webhooks/payments:
+    post:
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_type]
+              properties:
+                event_id: { type: string }
+                event_type:
+                  type: string
+                  enum:
+                    - payment.succeeded
+                    - payment.failed
+                    - payment.expired
+                    - payment.cancelled
+                    - payment.canceled
+                    - payment.refunded
+                    - payment.refund.succeeded
+                resource_id: { type: string }
+                resource_type: { type: string }
+                payload:
+                  type: object
+      responses:
+        "200":
+          description: IF-Pay webhook 已接收、去重或完成订单状态处理。
+  /api/v1/admin/overview:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 管理总览指标。
+  /api/v1/admin/users:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 用户列表。
+  /api/v1/admin/users/{id}/grant-plan:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_slug, days]
+              properties:
+                plan_slug: { type: string }
+                days: { type: integer, minimum: 1 }
+                reason: { type: string }
+      responses:
+        "200":
+          description: 发放套餐成功。发放 infinite-max 时 reason 必填。
+  /api/v1/admin/users/{id}/ban:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 封禁用户并撤销其未撤销 API Key。
+  /api/v1/admin/users/{id}/unban:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 恢复用户为 active。
+  /api/v1/admin/users/{id}/subscription/expire:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+                retention_days: { type: integer, default: 30, minimum: 1, maximum: 365 }
+                delete_now: { type: boolean, default: false }
+      responses:
+        "200":
+          description: 强制订阅到期，默认进入只读保留期。
+  /api/v1/admin/orders:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 订单列表，按创建时间倒序返回。
+  /api/v1/admin/orders/{id}/mark-paid:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: 人工入账并发放订阅，写入审计日志。
+  /api/v1/admin/orders/{id}/cancel:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: 取消未支付订单，写入审计日志。
+  /api/v1/admin/orders/{id}/refund:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string }
+      responses:
+        "200":
+          description: 退款已支付订单；当前订阅匹配时进入只读保留期。
+  /api/v1/admin/security/hotlink:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 防盗链配置摘要。
+    patch:
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                allowed_domains:
+                  type: array
+                  items: { type: string }
+                blocked_domains:
+                  type: array
+                  items: { type: string }
+                allow_empty_referer: { type: boolean }
+      responses:
+        "200":
+          description: 防盗链策略已保存并立即影响图片分发。
+  /api/v1/admin/system/config:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 系统生产配置摘要。
+  /api/v1/admin/queue/status:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: Redis Stream 队列状态、pending/dead-letter 数量与消费者摘要。
+  /api/v1/admin/queue/dead-letters:
+    get:
+      security:
+        - adminToken: []
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: 最近的 dead-letter 任务列表。
+  /api/v1/admin/queue/dead-letters/{id}/requeue:
+    post:
+      security:
+        - adminToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: 将 dead-letter 任务重新投递回主队列，并从 dead-letter stream 删除。
+  /api/v1/admin/cdn/config:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: CDN 与边缘鉴权配置摘要。
+  /api/v1/admin/api/config:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: OpenAPI、metrics、IF-Pay 和默认 API scope 摘要。
+  /api/v1/admin/backups/export:
+    get:
+      security:
+        - adminToken: []
+      responses:
+        "200":
+          description: 管理员全量 ZIP 备份，包含数据库快照、对象文件、manifest 与 checksum，不包含密钥。
+  /api/v1/admin/backups/import/validate:
+    post:
+      security:
+        - adminToken: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+          application/zip:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: 备份包 manifest/checksum 预检通过，不会覆盖线上数据。
+  /api/v1/admin/audit-logs:
+    get:
+      security:
+        - adminToken: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: action
+          schema: { type: string }
+        - in: query
+          name: actor
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: 分页筛选审计日志，返回 items/total/limit/offset。
+  /api/v1/admin/images:
+    get:
+      security:
+        - adminToken: []
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, frozen, deleted] }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 200, minimum: 1, maximum: 500 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: 分页筛选图片审核队列，返回 items/total/limit/offset。
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    adminToken:
+      type: http
+      scheme: bearer
+      description: 管理员邮箱密码和 TOTP 2FA 登录后返回的 yx_admin 会话。
+  parameters:
+    PublicID:
+      name: public_id
+      in: path
+      required: true
+      schema:
+        type: string

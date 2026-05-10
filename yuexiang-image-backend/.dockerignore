@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+!.env.production.example
+.git
+.gitignore
+tmp
+dist
+coverage
+*.log
+yuexiang-api
+yuexiang-worker
+

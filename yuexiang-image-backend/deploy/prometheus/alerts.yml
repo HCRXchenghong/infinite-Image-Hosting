@@ -1,0 +1,71 @@
+groups:
+  - name: yuexiang-image-api
+    rules:
+      - alert: YuexiangAPIUnavailable
+        expr: up{job="yuexiang-image-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Yuexiang Image API is unreachable"
+          description: "Prometheus cannot scrape the API for more than 2 minutes. Check process health, load balancer, and /readyz."
+
+      - alert: YuexiangHighHTTP5xxRate
+        expr: |
+          sum(rate(yuexiang_http_requests_total{status=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(yuexiang_http_requests_total[5m])), 1) > 0.02
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Yuexiang Image API 5xx rate is above 2%"
+          description: "Investigate recent deploys, PostgreSQL/S3/Redis readiness, and API logs by route."
+
+      - alert: YuexiangRiskEventsSpike
+        expr: increase(yuexiang_risk_events_total[10m]) > 50
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Risk events increased quickly"
+          description: "Check hotlink/WAF policy, moderation queue, and suspicious users in the admin console."
+
+  - name: yuexiang-image-queue
+    rules:
+      - alert: YuexiangRedisQueueUnavailable
+        expr: yuexiang_queue_redis_reachable == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis task queue is unreachable"
+          description: "Image processing workers cannot reliably consume tasks. Check Redis connectivity and credentials."
+
+      - alert: YuexiangQueueLagGrowing
+        expr: yuexiang_queue_lag > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Image processing queue lag is high"
+          description: "Scale workers or inspect stuck tasks in the admin queue page."
+
+      - alert: YuexiangQueuePendingStuck
+        expr: yuexiang_queue_pending > 20
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis Stream pending tasks are stuck"
+          description: "Pending tasks may belong to crashed workers. Verify WORKER_CLAIM_IDLE and worker logs."
+
+      - alert: YuexiangDeadLettersPresent
+        expr: yuexiang_queue_dead_letters > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dead-letter image tasks require operator action"
+          description: "Open Admin > Task Queue Status, inspect dead-letter payloads, fix the root cause, then requeue."
+
